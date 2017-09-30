@@ -1,3 +1,5 @@
+#include <LiquidCrystal.h>
+
 
 /*
   Pro-Timer Free
@@ -102,8 +104,8 @@ void loop() {
   if (millis() > lastKeyCheckTime + keySampleRate) {
     lastKeyCheckTime = millis();
     localKey = keypad.getKey();
-    //Serial.println( localKey );
-    //Serial.println( lastKeyPressed );
+    // Serial.println( localKey );
+    // Serial.println( lastKeyPressed );
 
     if (localKey != lastKeyPressed) {
       processKey();
