@@ -39,9 +39,10 @@ unsigned long lastKeyPressTime = 0;
 
 int sameKeyCount = 0;
 unsigned long previousMillis = 0;		// Timestamp of last shutter release
+unsigned long previousMillis2 = 0;
 unsigned long runningTime = 0;
 
-float interval = 4.0;					// the current interval
+float interval = 25.0;					// the current interval
 long maxNoOfShots = 0;
 int isRunning = 0;						// flag indicates intervalometer is running
 
@@ -53,9 +54,22 @@ unsigned long rampingStartTime = 0;		// ramping start time
 unsigned long rampingEndTime = 0;		// ramping end time
 float intervalBeforeRamping = 0;		// interval before ramping
 
+/*
+unsigned long lightOnTime = 72000000;
+unsigned long lightOffTime = 14400000;
+unsigned long lightIntervalTime = 86400000;
+*/
+unsigned long lightOnTime = 60000;
+unsigned long lightOffTime = 60000;
+unsigned long lightIntervalTime = 120000;
+int lightOn = 1;
+
 boolean backLight = HIGH;				// The current settings for the backlight
 
 const int SCR_INTERVAL = 0;				// menu workflow constants
+const int SCR_CHTIME = 21;
+const int SCR_CHLIGHTON_TIME = 22;
+const int SCR_CHLIGHTOFF_TIME = 23;
 const int SCR_SHOOTS = 1;
 const int SCR_RUNNING = 2;
 const int SCR_CONFIRM_END = 3;
@@ -104,8 +118,6 @@ void loop() {
   if (millis() > lastKeyCheckTime + keySampleRate) {
     lastKeyCheckTime = millis();
     localKey = keypad.getKey();
-    // Serial.println( localKey );
-    // Serial.println( lastKeyPressed );
 
     if (localKey != lastKeyPressed) {
       processKey();
@@ -130,11 +142,45 @@ void loop() {
 
 }
 
+void actionInterval() {
+          currentMenu = SCR_INTERVAL;
+        isRunning = 0;
+        lcd.clear();
+
+}
+
+int changeTimePos = 0;
+
+void actionChangeTime() {
+  changeTimePos = 0;
+  currentMenu = SCR_CHLIGHTON_TIME;
+  isRunning = 0;
+  lcd.clear();
+}
+
+void actionRunning() {
+        currentMenu = SCR_RUNNING;
+        previousMillis = millis();
+        previousMillis2 = millis();
+        // runningTime = 0;
+        isRunning = 1;
+
+        lcd.noCursor();
+        lcd.clear();
+
+
+        // do the first release instantly, the subsequent ones will happen in the loop
+        //releaseCamera();
+        //imageCount++;
+  
+}
+
 /**
    Process the key presses - do the Menu Navigation
 */
 void processKey() {
-
+  long timeTmp, timeTmp2;
+  
   lastKeyPressed = localKey;
   lastKeyPressTime = millis();
 
@@ -166,11 +212,151 @@ void processKey() {
         }
       }
 
-      if ( localKey == RIGHT ) {
+/*      if ( localKey == RIGHT ) {
         lcd.clear();
         rampTo = interval;			// set rampTo default to the current interval
         currentMenu = SCR_SHOOTS;
       }
+*/
+
+      if (localKey == RIGHT) {
+        actionChangeTime();
+      }
+      break;
+      
+    case SCR_CHTIME:
+    case SCR_CHLIGHTON_TIME:
+    case SCR_CHLIGHTOFF_TIME:
+
+      if (localKey == UP) {
+        if (currentMenu == SCR_CHLIGHTON_TIME) {
+           timeTmp = lightOnTime;
+        } else if (currentMenu == SCR_CHLIGHTOFF_TIME) {
+          timeTmp = lightOffTime;
+        } else {
+          timeTmp = runningTime;
+        }
+        
+        if (changeTimePos == 0)      { timeTmp += 36000000; }
+        else if (changeTimePos == 1) { timeTmp += 3600000; }
+        //
+        else if (changeTimePos == 3) { timeTmp += 600000; }
+        else if (changeTimePos == 4) { timeTmp += 60000; }
+        
+        else if (changeTimePos == 6) { timeTmp += 10000; }
+        else if (changeTimePos == 7) { timeTmp += 1000; }
+
+
+        if (currentMenu == SCR_CHLIGHTON_TIME || currentMenu == SCR_CHLIGHTOFF_TIME) {
+          while (timeTmp < 0) {
+            timeTmp += 86400000;
+          }
+          timeTmp %= 86400000;
+        } else {
+          while (timeTmp < 0 && lightIntervalTime > 0) {
+            timeTmp += lightIntervalTime;
+          }
+          timeTmp %= lightIntervalTime;          
+        }
+
+        if (currentMenu == SCR_CHLIGHTON_TIME) {
+          lightOnTime = timeTmp;
+          lightIntervalTime = lightOnTime + lightOffTime;
+        } else if (currentMenu == SCR_CHLIGHTOFF_TIME) {
+          lightOffTime = timeTmp;
+          lightIntervalTime = lightOnTime + lightOffTime;
+        } else {
+          runningTime = timeTmp;
+        }
+        
+      }
+
+      
+      if (localKey == DOWN) {
+        
+        if (currentMenu == SCR_CHLIGHTON_TIME) {
+           timeTmp = lightOnTime;
+        } else if (currentMenu == SCR_CHLIGHTOFF_TIME) {
+          timeTmp = lightOffTime;
+        } else {
+          timeTmp = runningTime;
+        }
+ 
+        if (changeTimePos == 0)      { timeTmp -= 36000000; }
+        else if (changeTimePos == 1) { timeTmp -= 3600000; }
+        //
+        else if (changeTimePos == 3) { timeTmp -= 600000; }
+        else if (changeTimePos == 4) { timeTmp -= 60000; }
+        
+        else if (changeTimePos == 6) { timeTmp -= 10000; }
+        else if (changeTimePos == 7) { timeTmp -= 1000; }
+
+
+        if (currentMenu == SCR_CHLIGHTON_TIME || currentMenu == SCR_CHLIGHTOFF_TIME) {
+          while (timeTmp < 0) {
+            timeTmp += 86400000;
+          }
+          timeTmp %= 86400000;
+        } else {
+          while (timeTmp < 0 && lightIntervalTime > 0) {
+            timeTmp += lightIntervalTime;
+          }
+          timeTmp %= lightIntervalTime;          
+        }
+        
+        if (currentMenu == SCR_CHLIGHTON_TIME) {
+          lightOnTime = timeTmp;
+          lightIntervalTime = lightOnTime + lightOffTime;
+        } else if (currentMenu == SCR_CHLIGHTOFF_TIME) {
+          lightOffTime = timeTmp;
+          lightIntervalTime = lightOnTime + lightOffTime;
+        } else {
+          runningTime = timeTmp;
+        }
+        
+      }
+      if ( localKey == LEFT ) {
+        if (changeTimePos == 7) { changeTimePos = 6; }
+        else if (changeTimePos == 6) { changeTimePos = 4; }
+        else if (changeTimePos == 4) { changeTimePos = 3; }
+        else if (changeTimePos == 3) { changeTimePos = 1; }
+        else if (changeTimePos > 0) {
+          changeTimePos--;
+        } else {
+  
+          if (currentMenu == SCR_CHLIGHTON_TIME) {
+            actionInterval();        
+          } else if (currentMenu == SCR_CHLIGHTOFF_TIME) {
+            currentMenu = SCR_CHLIGHTON_TIME;
+            lcd.clear();
+          } else {
+            currentMenu = SCR_CHLIGHTOFF_TIME;
+            lcd.clear();
+          }
+
+        }
+      }
+  
+      if ( localKey == RIGHT ) { // Start shooting
+        if (changeTimePos == 7) {
+          if (currentMenu == SCR_CHLIGHTON_TIME) {
+            currentMenu = SCR_CHLIGHTOFF_TIME;
+            lcd.clear();
+          } else if (currentMenu == SCR_CHLIGHTOFF_TIME) {
+            currentMenu = SCR_CHTIME;
+            lcd.clear();
+          } else {
+            actionRunning();
+          }
+        } else if (changeTimePos == 6) { changeTimePos = 7; }
+        else if (changeTimePos == 4) { changeTimePos = 6; }
+        else if (changeTimePos == 3) { changeTimePos = 4; }
+        else if (changeTimePos == 1) { changeTimePos = 3; }
+        else {
+          changeTimePos++;
+        }
+      }
+      
       break;
 
     case SCR_SHOOTS:
@@ -209,22 +395,12 @@ void processKey() {
       }
 
       if ( localKey == LEFT ) {
-        currentMenu = SCR_INTERVAL;
-        isRunning = 0;
-        lcd.clear();
+        actionChangeTime();
+        
       }
 
       if ( localKey == RIGHT ) { // Start shooting
-        currentMenu = SCR_RUNNING;
-        previousMillis = millis();
-        runningTime = 0;
-        isRunning = 1;
-
-        lcd.clear();
-
-        // do the first release instantly, the subsequent ones will happen in the loop
-        releaseCamera();
-        imageCount++;
+        actionRunning();
       }
       break;
 
@@ -256,8 +432,8 @@ void processKey() {
       if ( localKey == LEFT ) { // Really abort
         currentMenu = SCR_INTERVAL;
         isRunning = 0;
-        imageCount = 0;
-        runningTime = 0;
+//        imageCount = 0;
+//        runningTime = 0;
         lcd.clear();
       }
       if ( localKey == RIGHT ) { // resume
@@ -375,8 +551,8 @@ void processKey() {
       if ( localKey == LEFT || localKey == RIGHT ) {
         currentMenu = SCR_INTERVAL;
         isRunning = 0;
-        imageCount = 0;
-        runningTime = 0;
+//        imageCount = 0;
+//        runningTime = 0;
         lcd.clear();
       }
       break;
@@ -394,6 +570,12 @@ void printScreen() {
 
     case SCR_SHOOTS:
       printNoOfShotsMenu();
+      break;
+
+    case SCR_CHTIME:
+    case SCR_CHLIGHTON_TIME:
+    case SCR_CHLIGHTOFF_TIME:
+      printTimeScreen();
       break;
 
     case SCR_RUNNING:
@@ -426,7 +608,7 @@ void printScreen() {
   }
 }
 
-
+unsigned long updateLight = 0;
 /**
    Running, releasing Camera
 */
@@ -442,28 +624,47 @@ void running() {
       lcd.clear();
       printDoneScreen(); // invoke manually
     } else { // is running
-      runningTime += (millis() - previousMillis );
+      // runningTime += (millis() - previousMillis );
       previousMillis = millis();
       releaseCamera();
       imageCount++;
     }
   }
 
+  if (updateLight < millis()) {
+    runningTime += (millis() - previousMillis2);
+    previousMillis2 = millis();
+
+    if (runningTime > lightIntervalTime) {
+      runningTime %= lightIntervalTime;
+    }
+
+    if (runningTime < lightOnTime) {
+      lightOn = 1;
+    } else {
+      lightOn = 0;
+    }
+
+    updateLight = millis() + 1000;
+  }
+
+
   // do this always (multiple times per interval)
-  possiblyRampInterval();
+  // possiblyRampInterval();
 }
 
 /**
    If ramping was enabled do the ramping
 */
 void possiblyRampInterval() {
-
+/*
   if ( ( millis() < rampingEndTime ) && ( millis() >= rampingStartTime ) ) {
     interval = intervalBeforeRamping + ( (float)( millis() - rampingStartTime ) / (float)( rampingEndTime - rampingStartTime ) * ( rampTo - intervalBeforeRamping ) );
   } else {
     rampingStartTime = 0;
     rampingEndTime = 0;
   }
+*/
 }
 
 /**
@@ -546,6 +747,13 @@ void printRunningScreen() {
 
   updateTime();
 
+  lcd.setCursor(0, 1);
+  if (lightOn) {
+    lcd.print("L");
+  } else {
+    lcd.print(" ");
+  }
+
   lcd.setCursor(11, 0);
   if ( millis() < rampingEndTime ) {
     lcd.print( "*" );
@@ -553,6 +761,50 @@ void printRunningScreen() {
     lcd.print( " " );
   }
   lcd.print( printFloat( interval, 4, 1 ) );
+}
+
+void printTimeScreen() {
+
+  unsigned long finerRunningTime;
+  String msg;
+  
+       if (currentMenu == SCR_CHLIGHTON_TIME) {
+           finerRunningTime = lightOnTime;
+            msg = "Light On Time";
+        } else if (currentMenu == SCR_CHLIGHTOFF_TIME) {
+          finerRunningTime = lightOffTime;
+          msg = "Light Off Time";
+        } else {
+          finerRunningTime = runningTime;
+          msg = "Current Time";
+        }
+
+  // Serial.println(finerRunningTime);
+ 
+    int hours = finerRunningTime / 1000 / 60 / 60;
+    int minutes = (finerRunningTime / 1000 / 60) % 60;
+    int secs = (finerRunningTime / 1000 ) % 60;
+
+    String sHours = fillZero( hours );
+    String sMinutes = fillZero( minutes );
+    String sSecs = fillZero( secs );
+
+    lcd.setCursor(0, 0);
+    lcd.print(msg);
+
+    lcd.setCursor(8, 1);
+    lcd.print( sHours );
+    lcd.setCursor(10, 1);
+    lcd.print(":");
+    lcd.setCursor(11, 1);
+    lcd.print( sMinutes );
+    lcd.setCursor(13, 1);
+    lcd.print(":");
+    lcd.setCursor(14, 1);
+    lcd.print( sSecs );
+
+    lcd.setCursor(8 + changeTimePos, 1);
+    lcd.cursor();
 }
 
 void printDoneScreen() {
@@ -584,7 +836,7 @@ void printConfirmEndScreen() {
 */
 void updateTime() {
 
-  unsigned long finerRunningTime = runningTime + (millis() - previousMillis);
+  unsigned long finerRunningTime = runningTime; // + (millis() - previousMillis);
 
   if ( isRunning ) {
 
@@ -670,6 +922,31 @@ String fillZero( int input ) {
   }
   return sInput;
 }
+
+String fillZero5( int input ) {
+
+  String sInput = String( input );
+  if ( sInput.length() == 1 ) {
+    sInput = "0000";
+  }
+  else if (sInput.length() == 2) {
+    sInput = "000";
+  }
+  else if (sInput.length() == 3) {
+    sInput = "00";
+  }
+  else if (sInput.length() == 4) {
+    sInput = "0";
+  }
+  else {
+    sInput = "";
+  }
+
+  sInput.concat( String( input ));
+
+  return sInput;
+}
+
 
 String printFloat(float f, int total, int dec) {
 
