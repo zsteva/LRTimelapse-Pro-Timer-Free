@@ -16,6 +16,10 @@ const String CAPTION = "Pro-Timer 0.85";
 LCD_Keypad_Reader keypad;
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);	//Pin assignments for SainSmart LCD Keypad Shield
 
+const int CAMERA_PIN = 12;
+const int LIGHT_PIN = 11;
+const int FLASH_PIN = 13;
+
 const int NONE = 0;						// Key constants
 const int SELECT = 1;
 const int LEFT = 2;
@@ -40,9 +44,8 @@ unsigned long lastKeyPressTime = 0;
 int sameKeyCount = 0;
 unsigned long previousMillis = 0;		// Timestamp of last shutter release
 unsigned long previousMillis2 = 0;
-unsigned long runningTime = 0;
 
-float interval = 25.0;					// the current interval
+float interval = 60.0;					// the current interval
 long maxNoOfShots = 0;
 int isRunning = 0;						// flag indicates intervalometer is running
 
@@ -54,15 +57,26 @@ unsigned long rampingStartTime = 0;		// ramping start time
 unsigned long rampingEndTime = 0;		// ramping end time
 float intervalBeforeRamping = 0;		// interval before ramping
 
-/*
-unsigned long lightOnTime = 72000000;
-unsigned long lightOffTime = 14400000;
-unsigned long lightIntervalTime = 86400000;
-*/
+unsigned long runningTime = 43200000; // 12h
+unsigned long lightOnTime = 79200000; // 22h
+unsigned long lightOffTime = 7200000; // 2h
+unsigned long lightIntervalTime = 86400000; // 24h
+
+/* DEV
+unsigned long runningTime = 0;
 unsigned long lightOnTime = 60000;
 unsigned long lightOffTime = 60000;
 unsigned long lightIntervalTime = 120000;
-int lightOn = 1;
+
+ */
+
+int light1On = 1;
+int light1Off = 0;
+int light2On = 0;
+
+unsigned long preLight = 5000;
+unsigned long postLight = 5000;
+
 
 boolean backLight = HIGH;				// The current settings for the backlight
 
@@ -100,7 +114,9 @@ void setup() {
   lcd.setCursor(0, 1);
   lcd.print( CAPTION );
 
-  pinMode(12, OUTPUT);					// initialize output pin for camera release
+  pinMode(CAMERA_PIN, OUTPUT);					// initialize output pin for camera release
+  pinMode(LIGHT_PIN, OUTPUT);
+  pinMode(FLASH_PIN, OUTPUT);
 
   delay(2000);							// wait a moment...
 
@@ -200,15 +216,21 @@ void processKey() {
     case SCR_INTERVAL:
 
       if ( localKey == UP ) {
-        interval = (float)((int)(interval * 10) + 1) / 10; // round to 1 decimal place
-        if ( interval > 99 ) { // no intervals longer as 99secs - those would scramble the display
-          interval = 99;
+        // interval = (float)((int)(interval * 10) + 1) / 10; // round to 1 decimal place
+        interval = (float)((int)(interval * 1) + 1) / 1; // round to 1 decimal place
+        if (interval > 900) {
+          interval = 900;
         }
+        
+        // if ( interval > 99 ) { // no intervals longer as 99secs - those would scramble the display
+        //   interval = 99;
+        // }
       }
 
       if ( localKey == DOWN ) {
-        if ( interval > 0.2) {
-          interval = (float)((int)(interval * 10) - 1) / 10; // round to 1 decimal place
+        if ( interval > 12) {
+          // interval = (float)((int)(interval * 10) - 1) / 10; // round to 1 decimal place
+          interval = (float)((int)(interval * 1) - 1) / 1;
         }
       }
 
@@ -608,44 +630,95 @@ void printScreen() {
   }
 }
 
+// ........... [light off] 5sec [release] 5sec [light on]...................
+
+unsigned long time1 = 0;
+unsigned long time2 = 0;
+unsigned long time3 = 0;
+int releaseOnce = 0;
+
 unsigned long updateLight = 0;
 /**
    Running, releasing Camera
 */
 void running() {
+  unsigned long curr_millis = millis();
+
+  if (time1 == 0) {
+    time2 = curr_millis + interval * 1000;
+    time1 = time2 - preLight;
+    time3 = time2 + postLight; 
+
+    light1Off = 0;
+    light2On = 0;
+    releaseOnce = 0;
+    digitalWrite(LIGHT_PIN, light1On && !light1Off ? HIGH : LOW);
+    digitalWrite(FLASH_PIN, light2On ? HIGH : LOW);
+  }
+
+  if (time3 < curr_millis) {
+    light1Off = 0;
+    light2On = 0;
+    digitalWrite(LIGHT_PIN, light1On && !light1Off ? HIGH : LOW);
+    digitalWrite(FLASH_PIN, light2On ? HIGH : LOW);
+
+    time2 = time2 + interval * 1000;
+    time1 = time2 - preLight;
+    time3 = time2 + postLight; 
+    releaseOnce = 0;
+  }
+
+  if (time2 < curr_millis && releaseOnce == 0) {
+    releaseCamera();
+    imageCount++;
+    releaseOnce = 1;
+  }
+
+  if (time1 < curr_millis) {
+    light1Off = 1;
+    light2On = 1;
+    digitalWrite(LIGHT_PIN, light1On && !light1Off ? HIGH : LOW);
+    digitalWrite(FLASH_PIN, light2On ? HIGH : LOW);
+  }
 
   // do this every interval only
-  if ( ( millis() - previousMillis ) >=  ( ( interval * 1000 )) ) {
+  // if ( ( millis() - previousMillis ) >=  ( ( interval * 1000 )) ) {
 
+/*
     if ( ( maxNoOfShots != 0 ) && ( imageCount >= maxNoOfShots ) ) { // sequence is finished
       // stop shooting
       isRunning = 0;
       currentMenu = SCR_DONE;
       lcd.clear();
       printDoneScreen(); // invoke manually
-    } else { // is running
+    } else { 
+  */    
+      // is running
       // runningTime += (millis() - previousMillis );
-      previousMillis = millis();
-      releaseCamera();
-      imageCount++;
-    }
-  }
+ //     previousMillis = millis();
+ //     releaseCamera();
+//      imageCount++;
+    
+    //}
+ /// }
 
-  if (updateLight < millis()) {
-    runningTime += (millis() - previousMillis2);
-    previousMillis2 = millis();
+  if (updateLight < curr_millis) {
+    runningTime += (curr_millis - previousMillis2);
+    previousMillis2 = curr_millis;
 
     if (runningTime > lightIntervalTime) {
       runningTime %= lightIntervalTime;
     }
 
     if (runningTime < lightOnTime) {
-      lightOn = 1;
+      light1On = 1;
     } else {
-      lightOn = 0;
+      light1On = 0;
     }
 
-    updateLight = millis() + 1000;
+    digitalWrite(LIGHT_PIN, light1On && !light1Off ? HIGH : LOW);
+
+    updateLight = curr_millis + 1000;
   }
 
 
@@ -675,9 +748,9 @@ void releaseCamera() {
   lcd.setCursor(15, 0);
   lcd.print((char)255);
 
-  digitalWrite(12, HIGH);
+  digitalWrite(CAMERA_PIN, HIGH);
   delay(RELEASE_TIME);
-  digitalWrite(12, LOW);
+  digitalWrite(CAMERA_PIN, LOW);
 
   lcd.setCursor(15, 0);
   lcd.print(" ");
@@ -727,7 +800,7 @@ void printNoOfShotsMenu() {
    Print running screen
 */
 void printRunningScreen() {
-
+  
   lcd.setCursor(0, 0);
   lcd.print( printInt( imageCount, 4 ) );
 
@@ -748,11 +821,23 @@ void printRunningScreen() {
   updateTime();
 
   lcd.setCursor(0, 1);
-  if (lightOn) {
+
+  if (light1On && !light1Off) {
     lcd.print("L");
   } else {
     lcd.print(" ");
   }
+
+
+  lcd.setCursor(1, 1);
+
+  if (light2On) {
+    lcd.print("f");
+  } else {
+    lcd.print(" ");
+  }
+  
+  
 
   lcd.setCursor(11, 0);
   if ( millis() < rampingEndTime ) {
